@@ -4,7 +4,7 @@
 
 void write_sudoku_buffer(int size, char **matrix, unsigned char *buffer) {
     int offset = 0;
-    buffer[offset++] = 0x81;
+    buffer[offset] = 0x81;
     const char *header = "SUDOKU";
     memcpy(buffer + offset, header, 6);
     offset += 6;
@@ -19,7 +19,7 @@ void write_sudoku_buffer(int size, char **matrix, unsigned char *buffer) {
 
 int read_sudoku_buffer(unsigned char *buffer, int buffer_size) {
     int offset = 0;
-    if (buffer[offset++] != 0x81) {
+    if (buffer[offset] != 0x81) {
         fprintf(stderr, "Invalid buffer format: First byte is not 0x81.\n");
         return -1;
     }
