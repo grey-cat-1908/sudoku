@@ -1,8 +1,8 @@
 let wasmModule;
 
 async function loadWasmModule() {
-    const SudokuModule = await Sudoku();
-    wasmModule = SudokuModule;
+    const moduleFactory = await import('./sudoku.js');
+    wasmModule = await moduleFactory.default();
 }
 
 function downloadExampleFile() {
