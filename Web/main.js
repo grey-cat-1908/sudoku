@@ -1,25 +1,10 @@
-let wasmExports;
+let wasmModule;
 
 async function loadWasmModule() {
-    const response = await fetch('sudoku.wasm');
-    const buffer = await response.arrayBuffer();
-    const wasmModule = await WebAssembly.instantiate(buffer, {
-        env: {
-            printf: (ptr, ...args) => console.log("WASM printf stub")
-        }
-    });
-    wasmExports = wasmModule.instance.exports;
-}
-
-function handleFileUpload(file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-        const arrayBuffer = reader.result;
-        const inputBuffer = new Uint8Array(arrayBuffer);
-        const output = wasmExports.read_sudoku_buffer(inputBuffer, inputBuffer.length);
-        document.getElementById('output').innerText = `Sudoku Parsed: \n${output}`;
-    };
-    reader.readAsArrayBuffer(file);
+    const SudokuModule = await fetch('sudoku.js').then(res => res.text());
+    const ModuleFactory = new Function(`${SudokuModule}; return Module;`);
+    const Module = ModuleFactory();
+    wasmModule = await Module();
 }
 
 function downloadExampleFile() {
@@ -36,17 +21,31 @@ function downloadExampleFile() {
         [0, 0, 0, 5, 6, 1, 9, 0, 0]
     ];
 
-    const inputBuffer = new Uint8Array(256);
+    const buffer = new Uint8Array(256);
     const flatMatrix = predefinedMatrix.flat();
-    wasmExports.write_sudoku_buffer(size, flatMatrix, inputBuffer);
+    const matrixPtr = wasmModule._malloc(flatMatrix.length);
 
-    const blob = new Blob([inputBuffer], { type: 'application/octet-stream' });
+    wasmModule.HEAPU8.set(flatMatrix, matrixPtr);
+    wasmModule._write_sudoku_buffer(size, matrixPtr, buffer.byteOffset);
+    wasmModule._free(matrixPtr);
+
+    const blob = new Blob([buffer], { type: 'application/octet-stream' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = 'example.sudoku';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+}
+
+function handleFileUpload(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+        const arrayBuffer = reader.result;
+        const inputBuffer = new Uint8Array(arrayBuffer);
+        wasmModule._read_sudoku_buffer(inputBuffer.byteOffset, inputBuffer.length);
+    };
+    reader.readAsArrayBuffer(file);
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
