@@ -1,67 +1,57 @@
-let wasmModule;
+const predefinedMatrix = [
+    [0, 0, 9, 0, 5, 0, 0, 0, 0],
+    [5, 3, 0, 0, 8, 4, 0, 2, 0],
+    [0, 0, 0, 0, 6, 0, 0, 0, 0],
+    [4, 0, 6, 0, 3, 0, 0, 0, 0],
+    [0, 1, 8, 0, 0, 0, 0, 0, 9],
+    [0, 0, 0, 0, 0, 0, 2, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 5, 0],
+    [0, 8, 0, 0, 0, 0, 7, 0, 0],
+    [0, 0, 0, 5, 6, 1, 9, 0, 0]
+];
 
-async function loadWasm() {
-    wasmModule = await new Promise((resolve, reject) => {
-        Module.onRuntimeInitialized = () => resolve(Module);
+const size = 9;
+
+async function loadWasmModule() {
+    const wasmModule = await WebAssembly.instantiateStreaming(fetch('sudoku.wasm'), {
+        env: {
+            printf: (ptr, ...args) => console.log(UTF8ToString(ptr, ...args)),
+        },
     });
+    return wasmModule.instance.exports;
 }
 
-document.addEventListener("DOMContentLoaded", async () => {
-    await loadWasm();
+async function handleFileUpload(file) {
+    const wasmExports = await loadWasmModule();
+    const reader = new FileReader();
+    reader.onload = () => {
+        const buffer = new Uint8Array(reader.result);
+        wasmExports.read_sudoku_buffer(buffer, buffer.length);
+    };
+    reader.readAsArrayBuffer(file);
+}
 
-    const upload = document.getElementById("upload");
-    const processButton = document.getElementById("process");
-    const downloadLink = document.getElementById("download");
-    const output = document.getElementById("output");
+function downloadExampleFile() {
+    const wasmExports = loadWasmModule();
+    const buffer = new Uint8Array(256);
+    const matrix = predefinedMatrix.flat();
+    const size = 9;
 
-    let matrix = new Uint8Array();
-    let size = 0;
+    // Write buffer
+    wasmExports.write_sudoku_buffer(size, matrix, buffer);
 
-    upload.addEventListener("change", async (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
+    const blob = new Blob([buffer], { type: 'application/octet-stream' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'example.sudoku';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
 
-        const arrayBuffer = await file.arrayBuffer();
-        const input = new Uint8Array(arrayBuffer);
-
-        const matrixBuffer = new Uint8Array(256 * 256);
-        const sizeBuffer = new Uint32Array(1);
-
-        const parseResult = wasmModule.ccall(
-            'parse_sudoku_file',
-            'number',
-            ['array', 'number', 'array', 'array'],
-            [input, input.length, matrixBuffer, sizeBuffer]
-        );
-
-        if (parseResult < 0) {
-            output.textContent = "Invalid Sudoku file.";
-            return;
-        }
-
-        matrix = matrixBuffer.slice(0, sizeBuffer[0] * sizeBuffer[0]);
-        size = sizeBuffer[0];
-        output.textContent = `Parsed Matrix (${size}x${size}):\n${matrix}`;
-    });
-
-    processButton.addEventListener("click", () => {
-        if (!matrix.length) {
-            alert("Upload a valid Sudoku file first!");
-            return;
-        }
-
-        wasmModule.ccall('process_matrix', null, ['array', 'number'], [matrix, size]);
-        output.textContent = `Processed Matrix:\n${matrix}`;
-
-        const outputBuffer = new Uint8Array(8 + size * size);
-        const fileSize = wasmModule.ccall(
-            'create_sudoku_file',
-            'number',
-            ['array', 'number', 'array', 'number'],
-            [outputBuffer, outputBuffer.length, matrix, size]
-        );
-
-        const blob = new Blob([outputBuffer.slice(0, fileSize)], { type: "application/octet-stream" });
-        downloadLink.href = URL.createObjectURL(blob);
-    });
+document.getElementById('uploadButton').addEventListener('click', () => {
+    const file = document.getElementById('fileInput').files[0];
+    if (file) handleFileUpload(file);
 });
+
+document.getElementById('downloadButton').addEventListener('click', downloadExampleFile);

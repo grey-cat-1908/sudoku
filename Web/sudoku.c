@@ -1,44 +1,50 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
 
-#define MAX_SIZE 256
+void write_sudoku_buffer(int size, char **matrix, unsigned char *buffer) {
+    int offset = 0;
+    buffer[offset++] = 0x81;
+    const char *header = "SUDOKU";
+    memcpy(buffer + offset, header, 6);
+    offset += 6;
+    buffer[offset++] = size;
 
-void validate_matrix(uint8_t *matrix, int size) {
-    for (int i = 0; i < size * size; i++) {
-        if (matrix[i] > size) {
-            matrix[i] = 0;
-        }
-    }
-}
-
-void process_matrix(uint8_t *matrix, int size) {
     for (int i = 0; i < size; i++) {
         for (int j = 0; j < size; j++) {
-            matrix[i * size + j] = (matrix[i * size + j] + 1) % (size + 1);
+            buffer[offset++] = matrix[i][j];
         }
     }
 }
 
-int parse_sudoku_file(const uint8_t *input, int input_size, uint8_t *matrix, int *size) {
-    if (input_size < 8 || input[0] != 0x81 || memcmp(input + 1, "SUDOKU", 6) != 0) {
+int read_sudoku_buffer(unsigned char *buffer, int buffer_size) {
+    int offset = 0;
+    if (buffer[offset++] != 0x81) {
+        fprintf(stderr, "Invalid buffer format: First byte is not 0x81.\n");
         return -1;
     }
-    *size = input[7];
-    if (*size <= 0 || *size > MAX_SIZE || input_size != 8 + (*size) * (*size)) {
-        return -1;
-    }
-    memcpy(matrix, input + 8, (*size) * (*size));
-    return 0;
-}
 
-int create_sudoku_file(uint8_t *output, int max_output_size, const uint8_t *matrix, int size) {
-    if (size <= 0 || size > MAX_SIZE || max_output_size < 8 + size * size) {
+    char header[7] = {0};
+    memcpy(header, buffer + offset, 6);
+    offset += 6;
+    if (strncmp(header, "SUDOKU", 6) != 0) {
+        fprintf(stderr, "Invalid buffer format: Header is not 'SUDOKU'.\n");
         return -1;
     }
-    output[0] = 0x81;
-    memcpy(output + 1, "SUDOKU", 6);
-    output[7] = size;
-    memcpy(output + 8, matrix, size * size);
-    return 8 + size * size;
+
+    int size = buffer[offset++];
+    if (size <= 0 || size * size + offset > buffer_size) {
+        fprintf(stderr, "Invalid size in buffer or buffer too small.\n");
+        return -1;
+    }
+
+    printf("Sudoku (size %d x %d):\n", size, size);
+    for (int i = 0; i < size; i++) {
+        for (int j = 0; j < size; j++) {
+            printf("%d ", buffer[offset++]);
+        }
+        printf("\n");
+    }
+
+    return 0;
 }
